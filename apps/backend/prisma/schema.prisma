@@ -16,12 +16,17 @@ model User {
   id       String @id @default(uuid())
   username String @unique
   password String
+  avatars Avatar[]
+  avatarVideos AvatarVideo[]
 }
 
 model Avatar {
   id     String @id @default(uuid())
   userId String
   name   String
+  avatarImages AvatarImage[]
+  avatarVideoReferences AvatarVideoReference[]
+  user User @relation(fields: [userId], references: [id])
 }
 
 model AvatarImage {
@@ -29,6 +34,7 @@ model AvatarImage {
   avatarId String
   type     AvatarImageType
   url      String
+  avatarImage AvatarImage @relation(fields: [avatarId])
 }
 
 enum AvatarImageType {
@@ -39,12 +45,15 @@ enum AvatarImageType {
 model AvatarVideo {
   id         String          @id @default(uuid())
   prompt     String
+  userId String
   startFrame DateTime
   endFrame   DateTime
   duration   Int
   width      Int
   height     Int
   status     AvatarVideoType
+  avatarVideoReferences AvatarVideoReference[]
+  user User @relation(fields: [userId], references: [id])
 }
 
 enum AvatarVideoType {
@@ -57,4 +66,6 @@ model AvatarVideoReference {
   id            String @id
   avatarVideoId String
   avatarId      String
-}
+  avatar Avatar @relation(fields: [avatarId], references: [id])
+  avatarVideo AvatarVideo @relation(fields: [avatarVideoId], references: [id])
+} 
