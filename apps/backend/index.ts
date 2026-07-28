@@ -3,10 +3,12 @@ import { prisma } from "./db";
 import { CreateLoginSchema, CreateUserSchema } from "./types";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import cookieParser from "cookie-parser";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 app.post("/api/v1/signup", async (req, res) => {
   console.log("signup called");
@@ -67,7 +69,7 @@ app.post("/api/v1/signin", async (req, res) => {
   const isMatch = await bcrypt.compare(data.password, user?.password!);
   console.log(user?.password);
   console.log(data.password);
-  
+
   if (!isMatch) {
     return res.status(401).json({
       message: "Incorrect password",
@@ -85,7 +87,7 @@ app.post("/api/v1/signin", async (req, res) => {
   const cookieOptions = {
     httpOnly: true,
     secure: true,
-    maxAge: 24*60*60*1000,
+    maxAge: 24 * 60 * 60 * 1000,
   };
 
   res.cookie("token", token, cookieOptions);
@@ -96,15 +98,30 @@ app.post("/api/v1/signin", async (req, res) => {
       token,
       user: {
         id: user?.id,
-        username: user?.username
-      }
-    }
+        username: user?.username,
+      },
+    },
   });
 });
 
-app.get("/api/v1/avatar", (req, res) => {
-  console.log("avatar called");
+app.get("/api/v1/me", (req, res) => {
+  console.log("me called");
+  const { token } = req.cookies;
+  console.log(token);
+  if (!token) {
+    return res.status(400).json({
+      message: "Can't get token",
+    });
+  }
+
+  const data = jwt.verify(token, process.env.JWT_SECRET!);
+
+  return res.status(201).json({
+    data: data,
+  });
 });
+
+
 
 app.get("/api/v1/video", (req, res) => {
   console.log("video called");
