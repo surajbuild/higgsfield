@@ -121,7 +121,24 @@ app.get("/api/v1/me", (req, res) => {
   });
 });
 
+app.post("/api/v1/logout", (req, res) => {
+  console.log("Logout called");
 
+  const { token } = req.cookies;
+  if (!token) {
+    return res.status(400).json({
+      message: "Already logged out",
+    });
+  }
+
+  const response = res.clearCookie("token");
+
+  if (response) {
+    return res.status(201).json({
+      message: "Logout successfully",
+    });
+  }
+});
 
 app.get("/api/v1/video", (req, res) => {
   console.log("video called");
