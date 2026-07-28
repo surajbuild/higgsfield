@@ -1,13 +1,12 @@
 import express from "express";
 import { prisma } from "./db";
-import { CreateUserSchema } from "./types";
+import { CreateLoginSchema, CreateUserSchema } from "./types";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-
 
 app.post("/api/v1/signup", async (req, res) => {
   console.log("signup called");
@@ -24,7 +23,7 @@ app.post("/api/v1/signup", async (req, res) => {
 
   const existingUser = await prisma.user.findUnique({
     where: {
-      username,
+      username: data.username,
     },
   });
 
@@ -33,7 +32,7 @@ app.post("/api/v1/signup", async (req, res) => {
       message: "Username already exists",
     });
   }
-  const hashedPassword = await bcrypt.hash(password, 10)
+  const hashedPassword = await bcrypt.hash(password, 10);
 
   const user = await prisma.user.create({
     data: {
@@ -46,8 +45,61 @@ app.post("/api/v1/signup", async (req, res) => {
   });
 });
 
-app.get("/api/v1/signin", (req, res) => {
+app.post("/api/v1/signin", async (req, res) => {
   console.log("signin called");
+  const { success, data } = CreateLoginSchema.safeParse(req.body);
+  if (!success) {
+    return res.status(400).json({
+      message: "Incorrect credentials",
+    });
+  }
+
+  const { username, password } = data;
+  console.log("username", username);
+  console.log("password", password);
+
+  const user = await prisma.user.findUnique({
+    where: {
+      username: data.username,
+    },
+  });
+
+  const isMatch = await bcrypt.compare(data.password, user?.password!);
+  console.log(user?.password);
+  console.log(data.password);
+  
+  if (!isMatch) {
+    return res.status(401).json({
+      message: "Incorrect password",
+    });
+  }
+
+  const token = jwt.sign(
+    { id: user?.id, username: username },
+    process.env.JWT_SECRET!,
+    {
+      expiresIn: "24h",
+    },
+  );
+
+  const cookieOptions = {
+    httpOnly: true,
+    secure: true,
+    maxAge: 24*60*60*1000,
+  };
+
+  res.cookie("token", token, cookieOptions);
+
+  return res.status(201).json({
+    message: "user Logged in successfully",
+    user: {
+      token,
+      user: {
+        id: user?.id,
+        username: user?.username
+      }
+    }
+  });
 });
 
 app.get("/api/v1/avatar", (req, res) => {
