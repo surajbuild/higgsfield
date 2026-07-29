@@ -1,14 +1,23 @@
-import express from "express";
+import express, { response } from "express";
 import { prisma } from "./db";
-import { CreateLoginSchema, CreateUserSchema } from "./types";
+import {
+  CreateAvatarSchema,
+  CreateLoginSchema,
+  CreateUserSchema,
+} from "./types";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { InferenceClient } from "@huggingface/inference";
+import axios from "axios";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+const client = new InferenceClient(process.env.HUGGING_FACE_API_KEY);
 
 app.post("/api/v1/signup", async (req, res) => {
   console.log("signup called");
@@ -136,6 +145,81 @@ app.post("/api/v1/logout", (req, res) => {
   if (response) {
     return res.status(201).json({
       message: "Logout successfully",
+    });
+  }
+});
+
+app.post("/api/v1/avatar", async (req, res) => {
+  console.log("Avatar called");
+  try {
+    const { success, data } = CreateAvatarSchema.safeParse(req.body);
+
+    if (!success) {
+      return res.status(411).json({
+        message: "Incorrect inputs provided",
+      });
+    }
+
+    const imageUrl = data.image;
+
+    if (!imageUrl) {
+      return res.status(400).json({
+        message: "Image URL is required",
+      });
+    }
+
+    console.log(`Downloading image via Axios from: ${imageUrl}`);
+
+    const imageResponse = await axios.get(imageUrl, {
+      responseType: "arraybuffer",
+    });
+
+    const contentType = imageResponse.headers["content-type"]
+
+    const sourceBlob = new Blob([imageResponse.data], {
+      type:  typeof contentType === "string" ? contentType : undefined,
+    });
+
+    console.log("Image downloaded successfully. Sending to Hugging Face...");
+
+
+    const result = await client.imageToImage({
+      // model: "black-forest-labs/FLUX.2-klein-9B",
+      model: "black-forest-labs/FLUX.1-Kontext-dev",
+      inputs: sourceBlob,
+      parameters: {
+        prompt:
+          "Create a left side of this profile for this user. Given the image, create a portfolio headshot from the left side of this user",
+        strength: 0.85,
+        seed: 42,
+      },
+    });
+
+    if (!existsSync("assets")) {
+        mkdirSync("assets");
+    }
+
+    
+    const editedBuffer = Buffer.from(await result.arrayBuffer());
+
+    const fileName = `edited_image_${Date.now()}.png`;
+    const filePath = `assets/${fileName}`;
+
+    writeFileSync(filePath, editedBuffer);
+
+    console.log(`Saved edited image to ${filePath}`);
+
+    return res.status(200).json({
+      message: "success",
+      filePath: filePath,
+    });
+  } catch (error: any) {
+
+    console.error("API Error:", error.response ? error.response.data : error.message);
+
+    return res.status(500).json({
+      message: "Something went wrong during image generation",
+      error,
     });
   }
 });
