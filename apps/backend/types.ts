@@ -12,3 +12,8 @@ export const CreateLoginSchema = z.object({
     username: z.string(),
     password: z.string(),
 })
+
+export const CreateAvatarSchema = z.object({
+    name: z.string(),
+    image: z.string(),
+})
