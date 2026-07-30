@@ -10,7 +10,7 @@ import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { InferenceClient } from "@huggingface/inference";
-import axios from "axios";
+import { generateAvatar } from "./image";
 
 const app = express();
 app.use(express.json());
@@ -150,8 +150,8 @@ app.post("/api/v1/logout", (req, res) => {
 });
 
 app.post("/api/v1/avatar", async (req, res) => {
-  console.log("Avatar called");
   try {
+    console.log(Bun.env.HUGGING_FACE_API_KEY?.slice(0, 8));
     const { success, data } = CreateAvatarSchema.safeParse(req.body);
 
     if (!success) {
@@ -160,66 +160,18 @@ app.post("/api/v1/avatar", async (req, res) => {
       });
     }
 
-    const imageUrl = data.image;
-
-    if (!imageUrl) {
-      return res.status(400).json({
-        message: "Image URL is required",
-      });
-    }
-
-    console.log(`Downloading image via Axios from: ${imageUrl}`);
-
-    const imageResponse = await axios.get(imageUrl, {
-      responseType: "arraybuffer",
-    });
-
-    const contentType = imageResponse.headers["content-type"]
-
-    const sourceBlob = new Blob([imageResponse.data], {
-      type:  typeof contentType === "string" ? contentType : undefined,
-    });
-
-    console.log("Image downloaded successfully. Sending to Hugging Face...");
-
-
-    const result = await client.imageToImage({
-      // model: "black-forest-labs/FLUX.2-klein-9B",
-      model: "black-forest-labs/FLUX.1-Kontext-dev",
-      inputs: sourceBlob,
-      parameters: {
-        prompt:
-          "Create a left side of this profile for this user. Given the image, create a portfolio headshot from the left side of this user",
-        strength: 0.85,
-        seed: 42,
-      },
-    });
-
-    if (!existsSync("assets")) {
-        mkdirSync("assets");
-    }
-
-    
-    const editedBuffer = Buffer.from(await result.arrayBuffer());
-
-    const fileName = `edited_image_${Date.now()}.png`;
-    const filePath = `assets/${fileName}`;
-
-    writeFileSync(filePath, editedBuffer);
-
-    console.log(`Saved edited image to ${filePath}`);
+    const filePath = await generateAvatar(data.image);
 
     return res.status(200).json({
       message: "success",
-      filePath: filePath,
+      filePath,
     });
   } catch (error: any) {
-
-    console.error("API Error:", error.response ? error.response.data : error.message);
+    console.error("API Error:", error);
 
     return res.status(500).json({
       message: "Something went wrong during image generation",
-      error,
+      error: error.message,
     });
   }
 });
@@ -240,9 +192,9 @@ app.get("/api/v1/videos", (req, res) => {
   console.log("videos called");
 });
 
-app.get("/api/v1/avatar", (req, res) => {
-  console.log("avatar called");
-});
+// app.get("/api/v1/avatar", (req, res) => {
+//   console.log("avatar called");
+// });
 
 app.get("/api/v1/avatar/:avatarId", (req, res) => {
   console.log("avatarId called");
