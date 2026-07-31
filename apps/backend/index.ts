@@ -10,7 +10,8 @@ import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { InferenceClient } from "@huggingface/inference";
-import { generateAvatar } from "./image";
+import { createImage } from "./image";
+import { uuid } from "uuidv4";
 
 const app = express();
 app.use(express.json());
@@ -151,7 +152,6 @@ app.post("/api/v1/logout", (req, res) => {
 
 app.post("/api/v1/avatar", async (req, res) => {
   try {
-    console.log(Bun.env.HUGGING_FACE_API_KEY?.slice(0, 8));
     const { success, data } = CreateAvatarSchema.safeParse(req.body);
 
     if (!success) {
@@ -160,11 +160,47 @@ app.post("/api/v1/avatar", async (req, res) => {
       });
     }
 
-    const filePath = await generateAvatar(data.image);
+    const avatarId = uuid();
+    const leftImageId = uuid();
+    const rightImageId = uuid();
+    const frontImageId = uuid();
+
+    const leftPrompt =
+      "Create a high-quality portfolio headshot showing the user from the left side profile. Keep the identity, face shape, hairstyle, and outfit recognizable while producing a natural studio-quality left-facing portrait.";
+    const rightPrompt =
+      "Create a high-quality portfolio headshot showing the user from the right side profile. Keep the identity, face shape, hairstyle, and outfit recognizable while producing a natural studio-quality right-facing portrait.";
+    const frontPrompt =
+      "Create a high-quality front-facing portfolio headshot from the provided photo. Preserve the user's identity and facial features while producing a polished studio-quality front portrait.";
+
+    const [leftFilePath, rightFilePath, frontFilePath] = await Promise.all([
+      createImage(data.image, leftPrompt, "left"),
+      createImage(data.image, rightPrompt, "right"),
+      createImage(data.image, frontPrompt, "front"),
+    ]);
 
     return res.status(200).json({
       message: "success",
-      filePath,
+      avatar: {
+        id: avatarId,
+        name: data.name,
+      },
+      images: [
+        {
+          id: leftImageId,
+          type: "left",
+          path: leftFilePath,
+        },
+        {
+          id: rightImageId,
+          type: "right",
+          path: rightFilePath,
+        },
+        {
+          id: frontImageId,
+          type: "front",
+          path: frontFilePath,
+        },
+      ],
     });
   } catch (error: any) {
     console.error("API Error:", error);

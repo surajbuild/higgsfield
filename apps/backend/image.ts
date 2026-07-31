@@ -2,46 +2,60 @@ import axios from "axios";
 import { InferenceClient } from "@huggingface/inference";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 
-const client = new InferenceClient(Bun.env.HUGGING_FACE_API_KEY);
+const apiKey = process.env.HUGGING_FACE_API_KEY;
+const client = new InferenceClient(apiKey);
 
-export async function generateAvatar(imageUrl: string) {
-  console.log(`Downloading image via Axios from: ${imageUrl}`);
+const MODEL_ID = "black-forest-labs/FLUX.1-Kontext-dev";
+
+export async function createImage(
+  imageUrl: string,
+  prompt: string,
+  variant: "left" | "right" | "front" = "front",
+) {
+  if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+    throw new Error("Please provide a valid image URL.");
+  }
+
+  if (!apiKey) {
+    throw new Error("Missing HUGGING_FACE_API_KEY environment variable.");
+  }
+
+  console.log(`Downloading source image from: ${imageUrl}`);
 
   const imageResponse = await axios.get(imageUrl, {
     responseType: "arraybuffer",
+    timeout: 20_000,
+    validateStatus: (status) => status >= 200 && status < 300,
   });
 
   const contentType = imageResponse.headers["content-type"];
-
   const sourceBlob = new Blob([imageResponse.data], {
-    type: typeof contentType === "string" ? contentType : undefined,
+    type: typeof contentType === "string" ? contentType : "image/jpeg",
   });
 
-  console.log("Image downloaded successfully. Sending to Hugging Face...");
+  console.log(`Generating ${variant} profile image with Hugging Face...`);
 
   const result = await client.imageToImage({
-    model: "black-forest-labs/FLUX.1-Kontext-dev",
+    model: MODEL_ID,
     inputs: sourceBlob,
     parameters: {
-      prompt:
-        "Create a left side of this profile for this user. Given the image, create a portfolio headshot from the left side of this user",
-      strength: 0.85,
-      seed: 42,
+      prompt,
+      strength: 0.82,
+      seed: variant === "left" ? 11 : variant === "right" ? 22 : 33,
     },
   });
 
   if (!existsSync("assets")) {
-    mkdirSync("assets");
+    mkdirSync("assets", { recursive: true });
   }
 
   const editedBuffer = Buffer.from(await result.arrayBuffer());
-
-  const fileName = `edited_image_${Date.now()}.png`;
+  const fileName = `${variant}_profile_${Date.now()}.png`;
   const filePath = `assets/${fileName}`;
 
   writeFileSync(filePath, editedBuffer);
 
-  console.log(`Saved edited image to ${filePath}`);
+  console.log(`Saved ${variant} image to ${filePath}`);
 
   return filePath;
 }
