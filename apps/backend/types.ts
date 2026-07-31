@@ -17,3 +17,8 @@ export const CreateAvatarSchema = z.object({
     name: z.string(),
     image: z.string(),
 })
+
+export const CreateVideoSchema = z.object({
+    prompt: z.string().min(3, "prompt must be at least 3 characters"),
+    imagePaths: z.array(z.string()).min(1, "at least one image path is required"),
+})

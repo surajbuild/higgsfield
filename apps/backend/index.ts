@@ -4,6 +4,7 @@ import {
   CreateAvatarSchema,
   CreateLoginSchema,
   CreateUserSchema,
+  CreateVideoSchema,
 } from "./types";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -11,6 +12,7 @@ import cookieParser from "cookie-parser";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { InferenceClient } from "@huggingface/inference";
 import { createImage } from "./image";
+import { generateVideo } from "./video";
 import { uuid } from "uuidv4";
 
 const app = express();
@@ -164,6 +166,7 @@ app.post("/api/v1/avatar", async (req, res) => {
     const leftImageId = uuid();
     const rightImageId = uuid();
     const frontImageId = uuid();
+    const videoId = uuid();
 
     const leftPrompt =
       "Create a high-quality portfolio headshot showing the user from the left side profile. Keep the identity, face shape, hairstyle, and outfit recognizable while producing a natural studio-quality left-facing portrait.";
@@ -177,6 +180,15 @@ app.post("/api/v1/avatar", async (req, res) => {
       createImage(data.image, rightPrompt, "right"),
       createImage(data.image, frontPrompt, "front"),
     ]);
+
+    const videoPrompt =
+      `Create a smooth 3-5 second portfolio motion video that pans gently across the generated avatar images. Use the front, left, and right profile variations to produce a polished studio-quality identity video with natural motion.`;
+
+    const videoFilePath = await generateVideo(
+      videoPrompt,
+      [leftFilePath, rightFilePath, frontFilePath],
+      `avatar_${avatarId}`,
+    );
 
     return res.status(200).json({
       message: "success",
@@ -201,6 +213,10 @@ app.post("/api/v1/avatar", async (req, res) => {
           path: frontFilePath,
         },
       ],
+      video: {
+        id: videoId,
+        path: videoFilePath,
+      },
     });
   } catch (error: any) {
     console.error("API Error:", error);
@@ -212,8 +228,38 @@ app.post("/api/v1/avatar", async (req, res) => {
   }
 });
 
-app.get("/api/v1/video", (req, res) => {
-  console.log("video called");
+app.post("/api/v1/video", async (req, res) => {
+  try {
+    const { success, data } = CreateVideoSchema.safeParse(req.body);
+
+    if (!success) {
+      return res.status(411).json({
+        message: "Incorrect inputs provided",
+      });
+    }
+
+    const videoId = uuid();
+    const videoFilePath = await generateVideo(
+      data.prompt,
+      data.imagePaths,
+      `video_${videoId}`,
+    );
+
+    return res.status(200).json({
+      message: "success",
+      video: {
+        id: videoId,
+        path: videoFilePath,
+      },
+    });
+  } catch (error: any) {
+    console.error("Video API Error:", error);
+
+    return res.status(500).json({
+      message: "Something went wrong during video generation",
+      error: error.message,
+    });
+  }
 });
 
 app.get("/api/v1/video/:videoId", (req, res) => {
