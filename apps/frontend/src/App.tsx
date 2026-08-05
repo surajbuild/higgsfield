@@ -6,15 +6,16 @@ import Appbar from "./components/Appbar";
 import Signin from "./pages/Signin";
 import Dashboard from "./pages/Dashboard";
 import VideoCreator from "./pages/VideoCreator";
+import Signup from "./pages/Signup";
 
 export function App() {
   return (
     <div>
-      <Appbar />
       <BrowserRouter>
+      <Appbar /> 
         <Routes>
           <Route path="/" element={<Landing />} />
-          <Route path="/signup" element={<Signin />} />
+          <Route path="/signup" element={<Signup />} />
           <Route path="/signin" element={<Signin />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/video-creator" element={<VideoCreator />} />
