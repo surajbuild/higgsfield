@@ -1,4 +1,4 @@
-import express, { response } from "express";
+import express from "express";
 import { prisma } from "./db";
 import {
   CreateAvatarSchema,
@@ -9,16 +9,17 @@ import {
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { InferenceClient } from "@huggingface/inference";
 import { createImage } from "./image";
 import { generateVideo } from "./video";
 import { uuid } from "uuidv4";
+import cors from "cors"
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+app.use(cors());
 
 const client = new InferenceClient(process.env.HUGGING_FACE_API_KEY);
 
