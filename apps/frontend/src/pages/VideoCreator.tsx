@@ -1,11 +1,7 @@
-import React from 'react'
+import React from "react";
 
 const VideoCreator = () => {
-    return (
-        <div>
-            VideoCreator
-        </div>
-    )
-}
+  return <div>VideoCreator</div>;
+};
 
-export default VideoCreator
+export default VideoCreator;

@@ -181,8 +181,7 @@ app.post("/api/v1/avatar", async (req, res) => {
       createImage(data.image, frontPrompt, "front"),
     ]);
 
-    const videoPrompt =
-      `Create a smooth 3-5 second portfolio motion video that pans gently across the generated avatar images. Use the front, left, and right profile variations to produce a polished studio-quality identity video with natural motion.`;
+    const videoPrompt = `Create a smooth 3-5 second portfolio motion video that pans gently across the generated avatar images. Use the front, left, and right profile variations to produce a polished studio-quality identity video with natural motion.`;
 
     const videoFilePath = await generateVideo(
       videoPrompt,
