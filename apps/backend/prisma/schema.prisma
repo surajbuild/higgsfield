@@ -46,6 +46,7 @@ model AvatarVideo {
   id                    String                 @id @default(uuid())
   prompt                String
   userId                String
+  url                   String?
   startFrame            DateTime
   endFrame              DateTime
   duration              Int
