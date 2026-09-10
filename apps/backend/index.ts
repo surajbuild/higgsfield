@@ -1,4 +1,5 @@
 import express from "express";
+import path from "node:path";
 import { prisma } from "./db";
 import {
   CreateAvatarSchema,
@@ -9,7 +10,6 @@ import {
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
-import { InferenceClient } from "@huggingface/inference";
 import { createImage } from "./image";
 import { generateVideo } from "./video";
 import { uuid } from "uuidv4";
@@ -19,16 +19,34 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(cors({origin: 'http://localhost:5000', credentials: true}));
+app.use(cors({ origin: 'http://localhost:5000', credentials: true }));
 
-const client = new InferenceClient(process.env.HUGGING_FACE_API_KEY);
+const backendDir = process.cwd();
+app.use("/assets", express.static(path.join(backendDir, "assets")));
+app.use("/videos", express.static(path.join(backendDir, "videos")));
+
+type JwtPayload = { id: string; username: string };
+
+function getAuthUser(req: express.Request): JwtPayload | null {
+  const { token } = req.cookies;
+  if (!token) return null;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+    if (typeof decoded === "string") return null;
+    return { id: decoded.id as string, username: decoded.username as string };
+  } catch {
+    return null;
+  }
+}
+
+function assetUrl(req: express.Request, filePath: string): string {
+  return `${req.protocol}://${req.get("host")}/${filePath}`;
+}
 
 app.post("/api/v1/signup", async (req, res) => {
   console.log("signup called");
   const { success, data } = CreateUserSchema.safeParse(req.body);
 
-  console.log("success", success);
-  console.log("data", data);
   if (!success) {
     return res.status(400).json({
       message: "Incorrect credentials",
@@ -70,8 +88,6 @@ app.post("/api/v1/signin", async (req, res) => {
   }
 
   const { username, password } = data;
-  console.log("username", username);
-  console.log("password", password);
 
   const user = await prisma.user.findUnique({
     where: {
@@ -86,8 +102,6 @@ app.post("/api/v1/signin", async (req, res) => {
   }
 
   const isMatch = await bcrypt.compare(data.password, user.password);
-  console.log(user.password);
-  console.log(data.password);
 
   if (!isMatch) {
     return res.status(401).json({
@@ -125,18 +139,15 @@ app.post("/api/v1/signin", async (req, res) => {
 
 app.get("/api/v1/me", (req, res) => {
   console.log("me called");
-  const { token } = req.cookies;
-  console.log(token);
-  if (!token) {
-    return res.status(400).json({
-      message: "Can't get token",
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({
+      message: "Not authenticated",
     });
   }
 
-  const data = jwt.verify(token, process.env.JWT_SECRET!);
-
-  return res.status(201).json({
-    user: data,
+  return res.status(200).json({
+    user,
   });
 });
 
@@ -150,17 +161,23 @@ app.post("/api/v1/logout", (req, res) => {
     });
   }
 
-  const response = res.clearCookie("token");
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  });
 
-  if (response) {
-    return res.status(201).json({
-      message: "Logout successfully",
-    });
-  }
+  return res.status(200).json({
+    message: "Logout successfully",
+  });
 });
 
 app.post("/api/v1/avatar", async (req, res) => {
   try {
+    const user = getAuthUser(req);
+    if (!user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
     const { success, data } = CreateAvatarSchema.safeParse(req.body);
 
     if (!success) {
@@ -196,32 +213,59 @@ app.post("/api/v1/avatar", async (req, res) => {
       `avatar_${avatarId}`,
     );
 
+    const avatar = await prisma.avatar.create({
+      data: {
+        id: avatarId,
+        userId: user.id,
+        name: data.name,
+        avatarImages: {
+          create: [
+            { id: leftImageId, type: "Model", url: assetUrl(req, leftFilePath) },
+            { id: rightImageId, type: "Model", url: assetUrl(req, rightFilePath) },
+            { id: frontImageId, type: "Model", url: assetUrl(req, frontFilePath) },
+          ],
+        },
+      },
+      include: {
+        avatarImages: true,
+      },
+    });
+
+    const now = new Date();
+    const video = await prisma.avatarVideo.create({
+      data: {
+        id: videoId,
+        prompt: videoPrompt,
+        userId: user.id,
+        url: assetUrl(req, videoFilePath),
+        startFrame: now,
+        endFrame: new Date(now.getTime() + 2000),
+        duration: 2,
+        width: 768,
+        height: 768,
+        status: "Done",
+      },
+    });
+
+    const avatarImages = avatar.avatarImages;
+    const leftImage = avatarImages.find((img) => img.id === leftImageId);
+    const rightImage = avatarImages.find((img) => img.id === rightImageId);
+    const frontImage = avatarImages.find((img) => img.id === frontImageId);
+
     return res.status(200).json({
       message: "success",
       avatar: {
-        id: avatarId,
-        name: data.name,
+        id: avatar.id,
+        name: avatar.name,
       },
       images: [
-        {
-          id: leftImageId,
-          type: "left",
-          path: leftFilePath,
-        },
-        {
-          id: rightImageId,
-          type: "right",
-          path: rightFilePath,
-        },
-        {
-          id: frontImageId,
-          type: "front",
-          path: frontFilePath,
-        },
+        { id: leftImageId, type: "left", url: leftImage?.url },
+        { id: rightImageId, type: "right", url: rightImage?.url },
+        { id: frontImageId, type: "front", url: frontImage?.url },
       ],
       video: {
-        id: videoId,
-        path: videoFilePath,
+        id: video.id,
+        url: video.url,
       },
     });
   } catch (error: any) {
@@ -236,6 +280,11 @@ app.post("/api/v1/avatar", async (req, res) => {
 
 app.post("/api/v1/video", async (req, res) => {
   try {
+    const user = getAuthUser(req);
+    if (!user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
     const { success, data } = CreateVideoSchema.safeParse(req.body);
 
     if (!success) {
@@ -251,11 +300,27 @@ app.post("/api/v1/video", async (req, res) => {
       `video_${videoId}`,
     );
 
+    const now = new Date();
+    const video = await prisma.avatarVideo.create({
+      data: {
+        id: videoId,
+        prompt: data.prompt,
+        userId: user.id,
+        url: assetUrl(req, videoFilePath),
+        startFrame: now,
+        endFrame: new Date(now.getTime() + 2000),
+        duration: 2,
+        width: 768,
+        height: 768,
+        status: "Done",
+      },
+    });
+
     return res.status(200).json({
       message: "success",
       video: {
-        id: videoId,
-        path: videoFilePath,
+        id: video.id,
+        url: video.url,
       },
     });
   } catch (error: any) {
@@ -268,32 +333,145 @@ app.post("/api/v1/video", async (req, res) => {
   }
 });
 
-app.get("/api/v1/video/:videoId", (req, res) => {
-  console.log("videoId called");
+app.get("/api/v1/avatars", async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+
+  const avatars = await prisma.avatar.findMany({
+    where: { userId: user.id },
+    include: {
+      avatarImages: {
+        orderBy: { type: "asc" },
+      },
+    },
+    orderBy: { id: "asc" },
+  });
+
+  return res.status(200).json({
+    avatars: avatars.map((avatar) => ({
+      id: avatar.id,
+      name: avatar.name,
+      images: avatar.avatarImages.map((image) => ({
+        id: image.id,
+        type: image.type,
+        url: image.url,
+      })),
+    })),
+  });
 });
 
-app.get("/api/v1/videos", (req, res) => {
-  console.log("videos called");
+app.get("/api/v1/avatar/:avatarId", async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+
+  const avatar = await prisma.avatar.findFirst({
+    where: {
+      id: req.params.avatarId,
+      userId: user.id,
+    },
+    include: {
+      avatarImages: true,
+    },
+  });
+
+  if (!avatar) {
+    return res.status(404).json({ message: "Avatar not found" });
+  }
+
+  return res.status(200).json({
+    avatar: {
+      id: avatar.id,
+      name: avatar.name,
+      images: avatar.avatarImages.map((image) => ({
+        id: image.id,
+        type: image.type,
+        url: image.url,
+      })),
+    },
+  });
 });
 
-// app.get("/api/v1/avatar", (req, res) => {
-//   console.log("avatar called");
-// });
+app.get("/api/v1/videos", async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
 
-app.get("/api/v1/avatar/:avatarId", (req, res) => {
-  console.log("avatarId called");
+  const videos = await prisma.avatarVideo.findMany({
+    where: { userId: user.id },
+    orderBy: { id: "asc" },
+  });
+
+  return res.status(200).json({
+    videos: videos.map((video) => ({
+      id: video.id,
+      prompt: video.prompt,
+      status: video.status,
+      startFrame: video.startFrame,
+      endFrame: video.endFrame,
+      duration: video.duration,
+      width: video.width,
+      height: video.height,
+      url: video.url,
+    })),
+  });
+});
+
+app.get("/api/v1/video/:videoId", async (req, res) => {
+  const user = getAuthUser(req);
+  if (!user) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+
+  const video = await prisma.avatarVideo.findFirst({
+    where: {
+      id: req.params.videoId,
+      userId: user.id,
+    },
+  });
+
+  if (!video) {
+    return res.status(404).json({ message: "Video not found" });
+  }
+
+  return res.status(200).json({
+    video: {
+      id: video.id,
+      prompt: video.prompt,
+      status: video.status,
+      startFrame: video.startFrame,
+      endFrame: video.endFrame,
+      duration: video.duration,
+      width: video.width,
+      height: video.height,
+      url: video.url,
+    },
+  });
 });
 
 app.get("/api/v1/models", (req, res) => {
-  console.log("models called");
+  return res.status(200).json({
+    models: [
+      {
+        id: "flux-kontext",
+        name: "FLUX.1-Kontext-dev",
+        description: "Image-to-image avatar generation",
+      },
+      {
+        id: "wan2.1-i2v",
+        name: "Wan-AI/Wan2.1-I2V-14B-720P",
+        description: "Image-to-video motion generation",
+      },
+    ],
+  });
 });
 
-app.get("/api/v1/avatars", (req, res) => {
-  console.log("avatars called");
-});
-
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("App is listining on port ", PORT);
+  console.log("App is listening on port ", PORT);
 });
