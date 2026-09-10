@@ -38,6 +38,7 @@ type AvatarVideo = {
   id: string;
   prompt: string;
   status: "Pending" | "Done" | "Error";
+  url?: string;
   startFrame?: string;
   endFrame?: string;
   duration?: number;
@@ -337,10 +338,11 @@ const Dashboard = () => {
               {videos.map((video) => (
                 <Card key={video.id} className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer">
                   <div className="aspect-video bg-muted/50 relative overflow-hidden">
-                    {video.status === "Done" && video.endFrame ? (
-                      <img
-                        src={video.endFrame}
-                        alt={video.prompt}
+                    {video.status === "Done" && (video.url || video.endFrame) ? (
+                      <video
+                        src={video.url || video.endFrame}
+                        controls
+                        preload="metadata"
                         className="w-full h-full object-cover"
                       />
                     ) : (
