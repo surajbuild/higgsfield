@@ -15,6 +15,8 @@ async function signin({ username, password }: Signin) {
     const response = await axios.post(`${BACKEND_URL}/api/v1/signin`, {
         username,
         password,
+    }, {
+        withCredentials: true,
     })
 
 
