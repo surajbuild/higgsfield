@@ -46,7 +46,6 @@ const Signup = () => {
 
           <Button onClick={() => {
             try {
-              // 630854 DAC NO
               mutation.mutate({username, password});
               navigate('/signin')
             } catch (error) {
