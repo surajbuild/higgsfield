@@ -19,7 +19,7 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(cors());
+app.use(cors({origin: 'http://localhost:5000', credentials: true}));
 
 const client = new InferenceClient(process.env.HUGGING_FACE_API_KEY);
 
@@ -79,8 +79,14 @@ app.post("/api/v1/signin", async (req, res) => {
     },
   });
 
-  const isMatch = await bcrypt.compare(data.password, user?.password!);
-  console.log(user?.password);
+  if (!user) {
+    return res.status(401).json({
+      message: "Incorrect username",
+    });
+  }
+
+  const isMatch = await bcrypt.compare(data.password, user.password);
+  console.log(user.password);
   console.log(data.password);
 
   if (!isMatch) {
@@ -90,7 +96,7 @@ app.post("/api/v1/signin", async (req, res) => {
   }
 
   const token = jwt.sign(
-    { id: user?.id, username: username },
+    { id: user.id, username: username },
     process.env.JWT_SECRET!,
     {
       expiresIn: "24h",
@@ -99,7 +105,7 @@ app.post("/api/v1/signin", async (req, res) => {
 
   const cookieOptions = {
     httpOnly: true,
-    secure: true,
+    secure: process.env.NODE_ENV === "production",
     maxAge: 24 * 60 * 60 * 1000,
   };
 
@@ -110,8 +116,8 @@ app.post("/api/v1/signin", async (req, res) => {
     user: {
       token,
       user: {
-        id: user?.id,
-        username: user?.username,
+        id: user.id,
+        username: user.username,
       },
     },
   });
@@ -130,7 +136,7 @@ app.get("/api/v1/me", (req, res) => {
   const data = jwt.verify(token, process.env.JWT_SECRET!);
 
   return res.status(201).json({
-    data: data,
+    user: data,
   });
 });
 
@@ -264,10 +270,6 @@ app.post("/api/v1/video", async (req, res) => {
 
 app.get("/api/v1/video/:videoId", (req, res) => {
   console.log("videoId called");
-});
-
-app.get("/api/v1/me", (req, res) => {
-  console.log("me called");
 });
 
 app.get("/api/v1/videos", (req, res) => {
